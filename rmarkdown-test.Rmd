@@ -2,7 +2,7 @@
 title: "Earthquake Markdown test"
 author: "Adam Royer"
 date: "7/23/2021"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
