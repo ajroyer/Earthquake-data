@@ -1,0 +1,297 @@
+---
+title: "Comprehensive Earthquake Data Analysis - July 2021"
+author: "Data Analysis Report"
+date: "`r Sys.Date()`"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 6)
+```
+
+# Introduction
+
+This report analyzes earthquake data from the USGS (United States Geological Survey) for July 2021. The dataset contains information about earthquake events worldwide, including location, magnitude, depth, and timing.
+
+```{r load-libraries}
+library(tidyverse)
+library(lubridate)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(scales)
+
+# Load the data
+earthquakes <- read_csv("all_month.csv")
+
+# Display structure
+cat("Total number of earthquakes:", nrow(earthquakes), "\n")
+```
+
+# Data Overview
+
+```{r data-summary}
+# Convert time to proper datetime
+earthquakes <- earthquakes %>%
+  mutate(
+    datetime = ymd_hms(time),
+    date = as.Date(datetime),
+    hour = hour(datetime)
+  )
+
+# Summary statistics
+summary(earthquakes %>% select(mag, depth, latitude, longitude))
+```
+
+## Key Statistics
+
+```{r key-stats}
+cat("Date range:", min(earthquakes$date), "to", max(earthquakes$date), "\n")
+cat("Magnitude range:", round(min(earthquakes$mag, na.rm = TRUE), 2), "to",
+    round(max(earthquakes$mag, na.rm = TRUE), 2), "\n")
+cat("Depth range:", round(min(earthquakes$depth, na.rm = TRUE), 2), "to",
+    round(max(earthquakes$depth, na.rm = TRUE), 2), "km\n")
+cat("Median magnitude:", round(median(earthquakes$mag, na.rm = TRUE), 2), "\n")
+cat("Mean magnitude:", round(mean(earthquakes$mag, na.rm = TRUE), 2), "\n")
+```
+
+# Magnitude Analysis
+
+## Magnitude Distribution
+
+```{r magnitude-distribution}
+ggplot(earthquakes, aes(x = mag)) +
+  geom_histogram(binwidth = 0.1, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Earthquake Magnitudes",
+       x = "Magnitude",
+       y = "Count") +
+  theme_minimal() +
+  scale_y_continuous(labels = comma)
+```
+
+## Magnitude Categories
+
+```{r magnitude-categories}
+earthquakes <- earthquakes %>%
+  mutate(mag_category = case_when(
+    mag < 2.0 ~ "Micro (< 2.0)",
+    mag >= 2.0 & mag < 3.0 ~ "Minor (2.0-2.9)",
+    mag >= 3.0 & mag < 4.0 ~ "Light (3.0-3.9)",
+    mag >= 4.0 & mag < 5.0 ~ "Moderate (4.0-4.9)",
+    mag >= 5.0 & mag < 6.0 ~ "Strong (5.0-5.9)",
+    mag >= 6.0 & mag < 7.0 ~ "Major (6.0-6.9)",
+    mag >= 7.0 ~ "Great (7.0+)"
+  ))
+
+mag_summary <- earthquakes %>%
+  count(mag_category) %>%
+  mutate(percentage = round(n / sum(n) * 100, 2)) %>%
+  arrange(desc(n))
+
+print(mag_summary)
+
+ggplot(mag_summary, aes(x = reorder(mag_category, n), y = n)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  coord_flip() +
+  labs(title = "Earthquake Frequency by Magnitude Category",
+       x = "Magnitude Category",
+       y = "Count") +
+  theme_minimal() +
+  scale_y_continuous(labels = comma)
+```
+
+# Geographic Analysis
+
+## World Map of Earthquakes
+
+```{r world-map}
+world <- ne_countries(returnclass = "sf", scale = "medium")
+
+ggplot() +
+  geom_sf(data = world, fill = "gray90", color = "gray70") +
+  geom_point(data = earthquakes,
+             aes(x = longitude, y = latitude, size = mag, color = mag),
+             alpha = 0.5) +
+  scale_color_viridis_c(option = "plasma", name = "Magnitude") +
+  scale_size_continuous(range = c(0.1, 4), name = "Magnitude") +
+  labs(title = "Global Earthquake Distribution - July 2021",
+       subtitle = paste(nrow(earthquakes), "earthquakes recorded")) +
+  theme_minimal() +
+  theme(legend.position = "right")
+```
+
+## Top 10 Most Active Regions
+
+```{r top-regions}
+top_regions <- earthquakes %>%
+  count(place, sort = TRUE) %>%
+  head(10)
+
+print(top_regions)
+
+ggplot(top_regions, aes(x = reorder(place, n), y = n)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  coord_flip() +
+  labs(title = "Top 10 Most Active Earthquake Regions",
+       x = "Location",
+       y = "Number of Earthquakes") +
+  theme_minimal()
+```
+
+# Depth Analysis
+
+```{r depth-analysis}
+ggplot(earthquakes, aes(x = depth)) +
+  geom_histogram(binwidth = 5, fill = "purple", color = "white") +
+  labs(title = "Distribution of Earthquake Depths",
+       x = "Depth (km)",
+       y = "Count") +
+  theme_minimal() +
+  scale_y_continuous(labels = comma)
+```
+
+## Depth vs Magnitude
+
+```{r depth-vs-magnitude}
+ggplot(earthquakes, aes(x = depth, y = mag)) +
+  geom_point(alpha = 0.3, color = "darkblue") +
+  geom_smooth(method = "loess", color = "red") +
+  labs(title = "Relationship between Depth and Magnitude",
+       x = "Depth (km)",
+       y = "Magnitude") +
+  theme_minimal()
+```
+
+# Temporal Analysis
+
+## Earthquakes per Day
+
+```{r daily-frequency}
+daily_counts <- earthquakes %>%
+  count(date)
+
+ggplot(daily_counts, aes(x = date, y = n)) +
+  geom_line(color = "steelblue", size = 1) +
+  geom_point(color = "steelblue") +
+  labs(title = "Daily Earthquake Frequency - July 2021",
+       x = "Date",
+       y = "Number of Earthquakes") +
+  theme_minimal() +
+  scale_x_date(date_breaks = "3 days", date_labels = "%b %d")
+```
+
+## Earthquakes by Hour of Day
+
+```{r hourly-pattern}
+hourly_counts <- earthquakes %>%
+  count(hour)
+
+ggplot(hourly_counts, aes(x = hour, y = n)) +
+  geom_bar(stat = "identity", fill = "orange") +
+  labs(title = "Earthquake Distribution by Hour of Day",
+       x = "Hour (UTC)",
+       y = "Number of Earthquakes") +
+  theme_minimal() +
+  scale_x_continuous(breaks = 0:23)
+```
+
+# Significant Earthquakes
+
+## Strongest Earthquakes (Magnitude >= 5.0)
+
+```{r strongest-earthquakes}
+strong_earthquakes <- earthquakes %>%
+  filter(mag >= 5.0) %>%
+  arrange(desc(mag)) %>%
+  select(datetime, mag, depth, place, latitude, longitude)
+
+cat("Number of earthquakes with magnitude >= 5.0:", nrow(strong_earthquakes), "\n\n")
+print(strong_earthquakes, n = 20)
+```
+
+## Map of Strong Earthquakes (Magnitude >= 5.0)
+
+```{r strong-earthquake-map}
+if(nrow(strong_earthquakes) > 0) {
+  ggplot() +
+    geom_sf(data = world, fill = "gray90", color = "gray70") +
+    geom_point(data = strong_earthquakes,
+               aes(x = longitude, y = latitude, size = mag, color = depth),
+               alpha = 0.8) +
+    scale_color_viridis_c(option = "magma", name = "Depth (km)") +
+    scale_size_continuous(range = c(3, 10), name = "Magnitude") +
+    labs(title = "Strong Earthquakes (Magnitude >= 5.0) - July 2021",
+         subtitle = paste(nrow(strong_earthquakes), "events")) +
+    theme_minimal()
+}
+```
+
+# Regional Focus: Pacific Ring of Fire
+
+```{r ring-of-fire}
+# Focus on Pacific region
+pacific_earthquakes <- earthquakes %>%
+  filter(
+    (longitude >= 100 & longitude <= -60) | longitude <= -100,
+    latitude >= -60 & latitude <= 70
+  )
+
+cat("Earthquakes in Pacific region:", nrow(pacific_earthquakes),
+    "(", round(nrow(pacific_earthquakes) / nrow(earthquakes) * 100, 1), "%)\n")
+
+ggplot() +
+  geom_sf(data = world, fill = "gray90", color = "gray70") +
+  geom_point(data = pacific_earthquakes,
+             aes(x = longitude, y = latitude, color = mag, size = mag),
+             alpha = 0.4) +
+  coord_sf(xlim = c(100, -60), ylim = c(-60, 70)) +
+  scale_color_viridis_c(option = "plasma", name = "Magnitude") +
+  scale_size_continuous(range = c(0.1, 4), name = "Magnitude") +
+  labs(title = "Earthquakes in the Pacific Ring of Fire Region",
+       subtitle = "July 2021") +
+  theme_minimal()
+```
+
+# Network Analysis
+
+```{r network-analysis}
+network_summary <- earthquakes %>%
+  count(net, sort = TRUE) %>%
+  head(10)
+
+ggplot(network_summary, aes(x = reorder(net, n), y = n)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Top 10 Seismic Networks by Number of Reports",
+       x = "Network Code",
+       y = "Number of Earthquakes Reported") +
+  theme_minimal() +
+  scale_y_continuous(labels = comma)
+```
+
+# Summary
+
+```{r summary}
+cat("\n=== EARTHQUAKE DATA SUMMARY - JULY 2021 ===\n\n")
+cat("Total Earthquakes:", nrow(earthquakes), "\n")
+cat("Date Range:", min(earthquakes$date), "to", max(earthquakes$date), "\n\n")
+cat("MAGNITUDE:\n")
+cat("  - Range:", round(min(earthquakes$mag, na.rm = TRUE), 2), "to",
+    round(max(earthquakes$mag, na.rm = TRUE), 2), "\n")
+cat("  - Mean:", round(mean(earthquakes$mag, na.rm = TRUE), 2), "\n")
+cat("  - Median:", round(median(earthquakes$mag, na.rm = TRUE), 2), "\n")
+cat("  - Strong (>= 5.0):", sum(earthquakes$mag >= 5.0, na.rm = TRUE), "\n\n")
+cat("DEPTH:\n")
+cat("  - Range:", round(min(earthquakes$depth, na.rm = TRUE), 2), "to",
+    round(max(earthquakes$depth, na.rm = TRUE), 2), "km\n")
+cat("  - Mean:", round(mean(earthquakes$depth, na.rm = TRUE), 2), "km\n")
+cat("  - Median:", round(median(earthquakes$depth, na.rm = TRUE), 2), "km\n\n")
+cat("MOST ACTIVE DAY:",
+    daily_counts %>% arrange(desc(n)) %>% slice(1) %>% pull(date),
+    "with", daily_counts %>% arrange(desc(n)) %>% slice(1) %>% pull(n),
+    "earthquakes\n")
+```
+
+---
+
+**Data Source:** USGS Earthquake Catalog
+**Analysis Date:** `r Sys.Date()`
